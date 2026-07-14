@@ -1,0 +1,16 @@
+{
+  "plugins": {
+    "catppuccin": {
+      "rev": "05e8787020dcfdb937bf2ff23855ea2415b4e072",
+      "src": "https://github.com/catppuccin/nvim"
+    },
+    "render-markdown": {
+      "rev": "f422cb5c6855f150e2ddcfaf44e7157b98b34f6a",
+      "src": "https://github.com/MeanderingProgrammer/render-markdown.nvim"
+    },
+    "vscode_modern": {
+      "rev": "22371eeb704bed395262e552248c998ef7f41254",
+      "src": "https://github.com/gmr458/vscode_modern_theme.nvim"
+    }
+  }
+}
