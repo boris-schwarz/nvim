@@ -21,9 +21,35 @@ vim.g.mapleader = " "
 vim.opt.title = true
 vim.opt.titlestring = "%{fnamemodify(getcwd(), ':t')} — nvim"
 
+-- Use PowerShell 7 for :terminal, :! and system() on Windows. The extra shell
+-- options come from :h shell-powershell — without them :! passes cmd.exe-style
+-- flags to pwsh. Linux keeps the default $SHELL.
+if vim.fn.has("win32") == 1 then
+  vim.o.shell = "pwsh"
+  vim.o.shellcmdflag = "-NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command [Console]::InputEncoding=[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new();$PSDefaultParameterValues['Out-File:Encoding']='utf8';$PSStyle.OutputRendering='plaintext';Remove-Alias -Force -ErrorAction SilentlyContinue tee;"
+  vim.o.shellredir = '2>&1 | %%{ "$_" } | Out-File %s; exit $LastExitCode'
+  vim.o.shellpipe = '2>&1 | %%{ "$_" } | Out-File %s; exit $LastExitCode'
+  vim.o.shellquote = ""
+  vim.o.shellxquote = ""
+end
+
 vim.keymap.set("n", "<A-j>", ":m .+1<CR>==", { desc = "Move line down" })
 vim.keymap.set("n", "<A-k>", ":m .-2<CR>==", { desc = "Move line up" })
 vim.keymap.set("n", "<leader>s", ":w<CR>", { desc = "Save file" })
+vim.keymap.set("n", "<leader>bt", function()
+  -- If focus is in a special panel (e.g. neo-tree), open the terminal in a
+  -- normal file window so it doesn't take over the sidebar.
+  if vim.bo.buftype ~= "" then
+    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+      if vim.bo[vim.api.nvim_win_get_buf(win)].buftype == "" then
+        vim.api.nvim_set_current_win(win)
+        break
+      end
+    end
+  end
+  vim.cmd("terminal")
+  vim.cmd("startinsert")
+end, { desc = "New terminal buffer" })
 vim.keymap.set("n", "<leader>cr", function()
   local root = vim.fs.root(0, "Cargo.toml")
   if not root then

@@ -38,7 +38,9 @@ return {
     -- file window, then cycle -- so the file never loads into the sidebar.
     local function cycle(cmd)
       return function()
-        if vim.bo.buftype ~= "" then
+        -- Terminal buffers live in the bufferline like files — cycle from them
+        -- directly; only special panels (neo-tree, …) need the window jump.
+        if vim.bo.buftype ~= "" and vim.bo.buftype ~= "terminal" then
           for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
             local buf = vim.api.nvim_win_get_buf(win)
             if vim.bo[buf].buftype == "" then
@@ -60,11 +62,12 @@ return {
     -- Close the current buffer without closing its window: switch the window
     -- to another buffer first, so the layout (and neo-tree sidebar) survives.
     vim.keymap.set("n", "<leader>bd", function()
-      if vim.bo.buftype ~= "" then
+      local is_term = vim.bo.buftype == "terminal"
+      if vim.bo.buftype ~= "" and not is_term then
         return
       end
       local cur = vim.api.nvim_get_current_buf()
-      if vim.bo[cur].modified then
+      if not is_term and vim.bo[cur].modified then
         vim.notify("Buffer has unsaved changes (save with <leader>s first)", vim.log.levels.WARN)
         return
       end
@@ -76,7 +79,8 @@ return {
       else
         vim.cmd("enew")
       end
-      vim.api.nvim_buf_delete(cur, {})
+      -- terminals need force: they always count as "modified" while running
+      vim.api.nvim_buf_delete(cur, { force = is_term })
     end, { desc = "Close buffer" })
   end,
 }
