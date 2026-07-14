@@ -1,111 +1,89 @@
--- themes (installed via the built-in vim.pack manager, Neovim 0.12+):
---   vscode_modern      — port of VS Code's "Dark Modern"
---   catppuccin-frappe  — switch anytime with :colorscheme catppuccin-frappe
-vim.pack.add({
-	{ src = "https://github.com/catppuccin/nvim", name = "catppuccin" },
-	{ src = "https://github.com/gmr458/vscode_modern_theme.nvim", name = "vscode_modern" },
-	-- renders markdown (tables!) in LSP hover floats and completion docs
-	{ src = "https://github.com/MeanderingProgrammer/render-markdown.nvim", name = "render-markdown" },
-})
-require("catppuccin").setup({
-	flavour = "frappe",
-})
-require("vscode_modern").setup({
-	cursorline = true,
-})
-vim.o.background = "dark"
-vim.cmd.colorscheme("catppuccin-frappe")
-
-require("render-markdown").setup({
-	completions = { lsp = { enabled = true } },
-})
+-- Disable netrw so it doesn't fill the window when opening a directory
+-- (neo-tree handles directories as a sidebar instead). Must be set before plugins load.
+vim.g.loaded_netrw = 1
+vim.g.loaded_netrwPlugin = 1
 
 -- line numbers: absolute for the current line, relative for the rest (hybrid).
 -- makes vertical motions like 5j / 12k easy to count.
-vim.o.number = true
-vim.o.relativenumber = true
+vim.opt.number = true
+vim.opt.relativenumber = true
+vim.opt.list = true
+vim.opt.listchars = { tab = "→ ", space = "·", trail = "~" }
+vim.opt.tabstop = 4
+vim.opt.shiftwidth = 4
+vim.opt.expandtab = false
+vim.opt.fixeol = true   -- always ensure a final newline on save
+vim.opt.eol = true
+vim.g.mapleader = " "
 
--- cflsp tags cf tag names (<cfoutput>, <cfloop>, …) as `macro` semantic tokens;
--- Catppuccin colours @lsp.type.macro mauve. Recolour to the HTML-tag blue so all
--- tags match. Scoped to the `cf` filetype (other languages' macros keep the theme
--- default) and re-applied on ColorScheme (which clears custom highlight links).
-local function cflsp_tag_color()
-	vim.api.nvim_set_hl(0, "@lsp.type.macro.cf", { link = "Function" })
+vim.keymap.set("n", "<A-j>", ":m .+1<CR>==", { desc = "Move line down" })
+vim.keymap.set("n", "<A-k>", ":m .-2<CR>==", { desc = "Move line up" })
+vim.keymap.set("n", "<leader>s", ":w<CR>", { desc = "Save file" })
+vim.keymap.set("n", "<leader>cr", function()
+  local root = vim.fs.root(0, "Cargo.toml")
+  if not root then
+    vim.notify("Not in a Cargo project (no Cargo.toml found)", vim.log.levels.WARN)
+    return
+  end
+  vim.cmd("botright 15split | terminal cargo run --manifest-path " .. vim.fn.fnameescape(root) .. "/Cargo.toml")
+  vim.cmd("startinsert")
+end, { desc = "cargo run" })
+vim.keymap.set("n", "<leader>cb", function()
+  local root = vim.fs.root(0, "Cargo.toml")
+  if not root then
+    vim.notify("Not in a Cargo project (no Cargo.toml found)", vim.log.levels.WARN)
+    return
+  end
+  vim.cmd("botright 15split | terminal cargo build --manifest-path " .. vim.fn.fnameescape(root) .. "/Cargo.toml")
+  vim.cmd("startinsert")
+end, { desc = "cargo build" })
+
+-- Bootstrap lazy.nvim
+local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
+if not vim.loop.fs_stat(lazypath) then
+  vim.fn.system({
+    "git", "clone", "--filter=blob:none",
+    "https://github.com/folke/lazy.nvim.git",
+    "--branch=stable",
+    lazypath,
+  })
 end
-vim.api.nvim_create_autocmd("ColorScheme", { callback = cflsp_tag_color })
-cflsp_tag_color()
+vim.opt.rtp:prepend(lazypath)
 
--- diagnostics display: Neovim ≥ 0.11 shows only gutter signs by default —
--- show the error message inline at the end of the line too
-vim.diagnostic.config({
-	virtual_text = true,
-	severity_sort = true,
+-- When launched on a directory (e.g. `nvim .`) with no file given, open
+-- src/main.rs in the main window if it exists, instead of an empty buffer.
+-- Registered before lazy.setup() because neo-tree (lazy = false) can trigger
+-- VimEnter during setup, before an autocmd defined afterwards would attach.
+vim.api.nvim_create_autocmd("VimEnter", {
+  callback = function()
+    -- Bail if an actual file was passed on the command line.
+    if vim.fn.argc() == 1 and vim.fn.isdirectory(vim.fn.argv(0)) == 0 then
+      return
+    end
+    if vim.fn.argc() > 1 then
+      return
+    end
+    local dir = vim.fn.argc() == 1 and vim.fn.argv(0) or vim.fn.getcwd()
+    local main = vim.fn.fnamemodify(dir, ":p") .. "src/main.rs"
+    if vim.fn.filereadable(main) == 0 then
+      return
+    end
+    -- Open it in a normal window, not the neo-tree sidebar. Deferred so it
+    -- runs after neo-tree has finished building the sidebar.
+    vim.schedule(function()
+      for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+        if vim.bo[vim.api.nvim_win_get_buf(w)].filetype ~= "neo-tree" then
+          vim.api.nvim_set_current_win(w)
+          break
+        end
+      end
+      vim.cmd("edit " .. vim.fn.fnameescape(main))
+    end)
+  end,
 })
 
--- completion: use Neovim's built-in LSP autocompletion (0.11+). The menu opens
--- automatically on the server's trigger characters (".", "<", "#", '"');
--- <C-y> accepts, <C-n>/<C-p> navigate, <C-x><C-o> triggers manually.
-vim.o.completeopt = "menuone,noselect,popup,fuzzy"
-vim.api.nvim_create_autocmd("LspAttach", {
-	callback = function(args)
-		local client = vim.lsp.get_client_by_id(args.data.client_id)
-		if not (client and client:supports_method("textDocument/completion")) then
-			return
-		end
-		vim.lsp.completion.enable(true, client.id, args.buf, { autotrigger = true })
+require("lazy").setup("plugins")
 
-		-- Built-in autotrigger only fires on the server's trigger chars (. < # " /),
-		-- so cf tag attributes (offered after `<cfloop `) never auto-open — a space
-		-- isn't a trigger. Also trigger completion while typing inside an open <cf…>
-		-- tag, so attributes (collection=, array=, from=, to=, …) pop as you type.
-		vim.api.nvim_create_autocmd("TextChangedI", {
-			buffer = args.buf,
-			callback = function()
-				if vim.fn.pumvisible() == 1 then
-					return -- menu already open; let built-in completion filter it
-				end
-				local col = vim.fn.col(".") - 1
-				local before = vim.api.nvim_get_current_line():sub(1, col)
-				local lt = before:match(".*()<") -- byte pos of the last '<'
-				if not lt then
-					return
-				end
-				local frag = before:sub(lt):lower() -- from that '<' to the cursor
-				-- inside an unclosed <cf…> tag, past the tag name (a space seen)
-				if not frag:find(">") and frag:match("^<cf%w*%s") then
-					vim.lsp.completion.get()
-				end
-			end,
-		})
-	end,
-})
-
--- cflsp — see C:/rust/cflsp-rs/docs/editors/neovim.md
-
-vim.filetype.add({
-	extension = { cfml = "cf" },
-})
-
-vim.lsp.config("cflsp", {
-	-- installed copy (cargo install --path crates/cflsp) so the build output in
-	-- target/release never gets locked by the running editor
-	cmd = { "cflsp", "--stdio" },
-	filetypes = { "cfml", "cf" },
-	root_markers = { "Application.cfc", "Application.cfm", "box.json", ".git" },
-	init_options = {
-		cfdocs = { path = "C:/home/cfdocs" },
-		engine = { name = "lucee", version = "6" },
-	},
-	settings = {
-		cflsp = {
-			-- mappings = { ["/model"] = "./model" },
-			-- NOTE: empty Lua tables serialize as JSON arrays — only add keys with values
-			lints = {
-				-- ColdBox config convention: configure() writes unscoped on purpose
-				["missing-var-scope"] = { exclude = { "config/**" } },
-			},
-		},
-	},
-})
-
-vim.lsp.enable("cflsp")
+-- Non-plugin config: built-in LSP completion and language servers.
+require("config.completion")
+require("config.cflsp")
