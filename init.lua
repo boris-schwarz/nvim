@@ -16,6 +16,11 @@ vim.opt.fixeol = true   -- always ensure a final newline on save
 vim.opt.eol = true
 vim.g.mapleader = " "
 
+-- Show the project folder (cwd tail) as the terminal window title
+-- (alacritty's dynamic_title picks this up; re-evaluated on cwd changes).
+vim.opt.title = true
+vim.opt.titlestring = "%{fnamemodify(getcwd(), ':t')} — nvim"
+
 vim.keymap.set("n", "<A-j>", ":m .+1<CR>==", { desc = "Move line down" })
 vim.keymap.set("n", "<A-k>", ":m .-2<CR>==", { desc = "Move line up" })
 vim.keymap.set("n", "<leader>s", ":w<CR>", { desc = "Save file" })
@@ -49,6 +54,12 @@ if not vim.loop.fs_stat(lazypath) then
   })
 end
 vim.opt.rtp:prepend(lazypath)
+
+-- When launched on a directory (e.g. `nvim c:\home\project`), make it the
+-- cwd so the window title, telescope, and live_grep are scoped to it.
+if vim.fn.argc() == 1 and vim.fn.isdirectory(vim.fn.argv(0)) == 1 then
+  vim.cmd.cd(vim.fn.argv(0))
+end
 
 -- When launched on a directory (e.g. `nvim .`) with no file given, open
 -- src/main.rs in the main window if it exists, instead of an empty buffer.
